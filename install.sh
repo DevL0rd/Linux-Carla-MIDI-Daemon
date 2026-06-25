@@ -7,14 +7,15 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BIN="$HOME/.local/bin/carla-midi-daemon"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/carla-midi-daemon"
-CFG="$CFG_DIR/devices.conf"
+CFG="$CFG_DIR/config.json"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT="$UNIT_DIR/carla-midi-daemon.service"
 
 echo ">> Installing Linux-Carla-MIDI-DAEMON"
 
-command -v pw-link >/dev/null || { echo "!! pw-link not found — install pipewire"; exit 1; }
-command -v pw-mon  >/dev/null || { echo "!! pw-mon not found — install pipewire";  exit 1; }
+for c in pw-link pw-mon jq; do
+  command -v "$c" >/dev/null || { echo "!! required command not found: $c (pw-link/pw-mon = pipewire, jq = jq)"; exit 1; }
+done
 
 install -Dm755 "$SRC/carla-midi-daemon.sh" "$BIN"
 echo "   daemon   -> $BIN"
@@ -22,7 +23,7 @@ echo "   daemon   -> $BIN"
 if [ -e "$CFG" ]; then
   echo "   config   -> $CFG (kept existing)"
 else
-  install -Dm644 "$SRC/devices.conf.example" "$CFG"
+  install -Dm644 "$SRC/config.example.json" "$CFG"
   echo "   config   -> $CFG (new — created from example)"
 fi
 

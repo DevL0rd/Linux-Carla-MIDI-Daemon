@@ -1,0 +1,35 @@
+{
+  "_comment": "Linux-Carla-MIDI-DAEMON config. Strict JSON (no comments in your real file). See README for the full schema. Find names with: 'pw-link -o' for MIDI sources, 'pw-link -i' for audio targets.",
+  "samplers": [
+    {
+      "plugin": "BitsonicSampler",
+
+      "midi": {
+        "port": "events-in",
+        "auto_add": false,
+        "priority": [
+          "USB func for MIDI",
+          "CN29: Bluetooth"
+        ]
+      },
+
+      "audio": {
+        "source_ports": ["output_1", "output_2"],
+        "routes": [
+          {
+            "name": "headphones",
+            "enabled": true,
+            "target": "ROG_DELTA_II",
+            "ports": ["playback_FL", "playback_FR"]
+          },
+          {
+            "name": "discord_mic",
+            "enabled": true,
+            "target": "easyeffects_source",
+            "ports": ["input_FL", "input_FR"]
+          }
+        ]
+      }
+    }
+  ]
+}
