@@ -80,7 +80,7 @@ All configuration is **JSON**, at `~/.config/carla-midi-daemon/config.json`:
   },
   "auto_launch": {
     "enabled": true,
-    "command": "carla",
+    "command": "carla $HOME/.config/carla-midi-daemon/BitsonicSampler.carxp",
     "process": "carla",
     "when_connected": ["USB func for MIDI", "CN29: Bluetooth"]
   }
@@ -136,6 +136,12 @@ won't relaunch it. Skipped if `process` is already running.
 | `command` | What to run (e.g. `carla`, or `carla /path/to/project.carxp`). |
 | `process` | Process name checked with `pgrep -x` to avoid double launches. |
 | `when_connected[]` | MIDI device substrings that trigger the launch. |
+
+A starter Carla project, **`BitsonicSampler.carxp`**, is bundled and installed to
+`~/.config/carla-midi-daemon/`; the default `command` opens it. It contains only
+the plugin (and its preset) — no patchbay connections, because the daemon makes
+all the connections itself once the plugin loads. Save over that file from Carla
+to customize what auto-launch opens (the installer won't overwrite it).
 
 Apply config changes with:
 

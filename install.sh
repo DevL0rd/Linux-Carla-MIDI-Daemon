@@ -8,6 +8,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$HOME/.local/bin/carla-midi-daemon"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/carla-midi-daemon"
 CFG="$CFG_DIR/config.json"
+PROJ="$CFG_DIR/BitsonicSampler.carxp"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT="$UNIT_DIR/carla-midi-daemon.service"
 
@@ -25,6 +26,14 @@ if [ -e "$CFG" ]; then
 else
   install -Dm644 "$SRC/config.example.json" "$CFG"
   echo "   config   -> $CFG (new — created from example)"
+fi
+
+# Carla project that auto_launch opens (kept if you've saved over it)
+if [ -e "$PROJ" ]; then
+  echo "   project  -> $PROJ (kept existing)"
+else
+  install -Dm644 "$SRC/BitsonicSampler.carxp" "$PROJ"
+  echo "   project  -> $PROJ (new)"
 fi
 
 install -Dm644 "$SRC/carla-midi-daemon.service" "$UNIT"

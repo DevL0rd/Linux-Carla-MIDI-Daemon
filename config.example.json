@@ -39,7 +39,7 @@
 
   "auto_launch": {
     "enabled": true,
-    "command": "carla",
+    "command": "carla $HOME/.config/carla-midi-daemon/BitsonicSampler.carxp",
     "process": "carla",
     "when_connected": ["USB func for MIDI", "CN29: Bluetooth"]
   }
