@@ -1,5 +1,5 @@
 {
-  "_comment": "Linux-Carla-MIDI-DAEMON config. Strict JSON (no comments in your real file). See README for the full schema. Find names with: 'pw-link -o' for MIDI sources, 'pw-link -i' for audio targets, 'pactl list short sources' for capture sources.",
+  "_comment": "Linux-Carla-MIDI-Daemon config. Strict JSON (no comments in your real file). See README for the full schema. Find names with: 'pw-link -o' for MIDI sources, 'pw-link -i' for audio targets, 'pactl list short sources' for capture sources.",
   "samplers": [
     {
       "plugin": "BitsonicSampler",

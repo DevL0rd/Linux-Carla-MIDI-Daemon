@@ -1,4 +1,4 @@
-# Linux-Carla-MIDI-DAEMON
+# Linux-Carla-MIDI-Daemon
 
 A tiny background daemon that automatically wires your MIDI controllers **and
 audio** for [Carla](https://github.com/falkTX/Carla) plugins on Linux/PipeWire.
@@ -36,8 +36,8 @@ your rig "just works" no matter what gets plugged in or unplugged.
 ## Install
 
 ```bash
-git clone https://github.com/DevL0rd/Linux-Carla-MIDI-DAEMON
-cd Linux-Carla-MIDI-DAEMON
+git clone https://github.com/DevL0rd/Linux-Carla-MIDI-Daemon
+cd Linux-Carla-MIDI-Daemon
 ./install.sh
 ```
 

@@ -1,6 +1,6 @@
 [Unit]
-Description=Linux-Carla-MIDI-DAEMON — MIDI controller auto-router for Carla
-Documentation=https://github.com/DevL0rd/Linux-Carla-MIDI-DAEMON
+Description=Linux-Carla-MIDI-Daemon — MIDI controller auto-router for Carla
+Documentation=https://github.com/DevL0rd/Linux-Carla-MIDI-Daemon
 After=pipewire.service wireplumber.service
 Wants=pipewire.service
 

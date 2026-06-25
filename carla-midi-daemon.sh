@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Linux-Carla-MIDI-DAEMON
+# Linux-Carla-MIDI-Daemon
 # Auto-wires MIDI controllers AND audio outputs for Carla plugins ("samplers")
 # on Linux/PipeWire, with per-plugin MIDI priority/failover and toggleable audio
 # routes. Optionally manages a virtual microphone that exists only while a Carla
