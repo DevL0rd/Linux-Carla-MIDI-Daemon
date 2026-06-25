@@ -87,10 +87,20 @@ reconcile() {
   done
 }
 
-# ── run: initial pass, then react to every graph change (debounced) ────────
+# ── run: initial pass, then react to graph changes (debounced) ─────────────
+# pw-mon emits thousands of param-update lines per second, and every pw-link the
+# daemon runs registers a short-lived Client — reacting to those would spin the
+# CPU and self-trigger forever. So in C (awk) we wake the shell ONLY when a
+# Node/Port/Device is added or removed (a real controller/plugin appearing or
+# leaving), ignoring Client/Link churn and param updates. Bursts are coalesced
+# into one reconcile.
 log "starting; config=$CONFIG"
 reconcile
-pw-mon 2>/dev/null | while IFS= read -r _; do
-  while IFS= read -r -t 0.4 _; do :; done       # coalesce hotplug event bursts
+pw-mon 2>/dev/null | awk '
+  /^(added|removed):/                                  { hot = 1; next }
+  /^[a-z]+:/                                           { hot = 0 }
+  hot && /type: PipeWire:Interface:(Node|Port|Device)/ { print; fflush(); hot = 0 }
+' | while IFS= read -r _; do
+  while IFS= read -r -t 0.4 _; do :; done
   reconcile
 done
