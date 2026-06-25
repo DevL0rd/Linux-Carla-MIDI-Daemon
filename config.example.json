@@ -1,5 +1,5 @@
 {
-  "_comment": "Linux-Carla-MIDI-DAEMON config. Strict JSON (no comments in your real file). See README for the full schema. Find names with: 'pw-link -o' for MIDI sources, 'pw-link -i' for audio targets.",
+  "_comment": "Linux-Carla-MIDI-DAEMON config. Strict JSON (no comments in your real file). See README for the full schema. Find names with: 'pw-link -o' for MIDI sources, 'pw-link -i' for audio targets, 'pactl list short sources' for capture sources.",
   "samplers": [
     {
       "plugin": "BitsonicSampler",
@@ -21,15 +21,26 @@
             "enabled": true,
             "target": "ROG_DELTA_II",
             "ports": ["playback_FL", "playback_FR"]
-          },
-          {
-            "name": "discord_mic",
-            "enabled": true,
-            "target": "easyeffects_source",
-            "ports": ["input_FL", "input_FR"]
           }
         ]
       }
     }
-  ]
+  ],
+
+  "virtual_mic": {
+    "enabled": true,
+    "name": "Carla-Mic",
+    "description": "Carla Piano + Voice",
+    "set_default": true,
+    "present_with": "BitsonicSampler",
+    "mix_samplers": ["BitsonicSampler"],
+    "mix_sources": ["mono-fallback"]
+  },
+
+  "auto_launch": {
+    "enabled": true,
+    "command": "carla",
+    "process": "carla",
+    "when_connected": ["USB func for MIDI", "CN29: Bluetooth"]
+  }
 }
