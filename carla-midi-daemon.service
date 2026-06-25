@@ -1,0 +1,14 @@
+[Unit]
+Description=Linux-Carla-MIDI-DAEMON — MIDI controller auto-router for Carla
+Documentation=https://github.com/DevL0rd/Linux-Carla-MIDI-DAEMON
+After=pipewire.service wireplumber.service
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/carla-midi-daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

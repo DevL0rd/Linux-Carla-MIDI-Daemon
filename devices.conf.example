@@ -1,0 +1,34 @@
+# ───────────────────────────────────────────────────────────────────────────
+#  Linux-Carla-MIDI-DAEMON — device configuration
+# ───────────────────────────────────────────────────────────────────────────
+# Map MIDI controllers to Carla plugins ("samplers") with failover priority.
+#
+# Each [sampler:NAME] block targets a Carla plugin whose PipeWire node is NAME.
+# Under it, list MIDI devices in priority order. The daemon wires the
+# HIGHEST-priority device that is currently connected to the plugin's MIDI
+# input and disconnects the others — so exactly one controller drives the
+# plugin at a time. Unplug it and the daemon falls back to the next one.
+# Priorities are independent per sampler.
+#
+# Keys (need at least one priorityN, or auto_add = yes):
+#   port       = <plugin MIDI input port>   (default: events-in)
+#   priorityN  = <device name>              (N = 1 is highest; 2, 3, … fall back)
+#   auto_add   = yes | no                   (when no listed device is present,
+#                                            grab any connected MIDI controller)
+#
+# Device names are matched as a SUBSTRING of the PipeWire source-port name.
+# List the available names with:
+#     pw-link -o | grep -i midi
+# e.g.  "Midi-Bridge:USB func for MIDI: MIDI OUT 1"  ->  "USB func for MIDI"
+
+[sampler:BitsonicSampler]
+port      = events-in
+priority1 = USB func for MIDI
+priority2 = CN29: Bluetooth
+auto_add  = no
+
+# Add more plugins, each with its own independent priority list:
+#
+# [sampler:Vital]
+# priority1 = CN29: Bluetooth
+# auto_add  = yes
