@@ -15,9 +15,11 @@ your rig "just works" no matter what gets plugged in or unplugged.
   it; unplug it and it falls back to the next, plug it back and it switches back.
 - **Audio routing** — route each plugin's outputs to one or more destinations,
   each with an `enabled` toggle.
-- **Virtual microphone** — create a mic (e.g. `Carla-Mic`) that mixes plugin
-  audio with your real mic, set it as the active input, and tie it to Carla's
-  lifecycle: it appears when a plugin loads and **vanishes when Carla closes**.
+- **Mic mix (no virtual device)** — while a Carla plugin is loaded, mix its
+  audio into your microphone by linking the plugin output into whatever app is
+  capturing the **current default source**. The default mic is never changed and
+  no device appears/disappears, so apps that own the default (e.g. WiVRn) keep
+  working. Links are removed when the plugin closes or the daemon stops.
 - **Auto-launch Carla** — open Carla automatically when a controller is plugged
   in.
 - **auto_add** (optional) — grab any connected MIDI device when none of the
@@ -69,14 +71,10 @@ All configuration is **JSON**, at `~/.config/carla-midi-daemon/config.json`:
       }
     }
   ],
-  "virtual_mic": {
+  "mic_mix": {
     "enabled": true,
-    "name": "Carla-Mic",
-    "description": "Carla Piano + Voice",
-    "set_default": true,
     "present_with": "BitsonicSampler",
-    "mix_samplers": ["BitsonicSampler"],
-    "mix_sources": ["mono-fallback"]
+    "mix_samplers": ["BitsonicSampler"]
   },
   "auto_launch": {
     "enabled": true,
@@ -87,14 +85,14 @@ All configuration is **JSON**, at `~/.config/carla-midi-daemon/config.json`:
 }
 ```
 
-**Name matching:** MIDI devices, audio `target`s and `mix_sources` are matched as
-a **substring** of the PipeWire port/node name, so a recognizable fragment is
-enough. List names with:
+**Name matching:** MIDI devices and audio `target`s are matched as a **substring**
+of the PipeWire port/node name, so a recognizable fragment is enough. List names
+with:
 
 ```bash
 pw-link -o | grep -i midi     # MIDI controllers
 pw-link -i                    # audio sinks / route targets
-pactl list short sources      # capture sources (your mic)
+pactl get-default-source      # the mic the mix follows
 ```
 
 ### `samplers[]`
@@ -109,20 +107,26 @@ pactl list short sources      # capture sources (your mic)
 | `audio.routes[]` | Destinations; connected when `enabled` (default true), disconnected when `false`. |
 | `route.target` / `route.ports[]` | Destination node (substring) and its input ports, paired with `source_ports` by position. |
 
-### `virtual_mic`
+### `mic_mix`
 
-Creates a virtual input device that exists **only while Carla has the plugin
-loaded** — created when it appears, removed when Carla closes (an external audio
-manager is expected to restore your previous default mic).
+Mixes plugin audio into your microphone **without a virtual device**. While the
+gating plugin is loaded, the daemon links each sampler's stereo output into
+whatever apps are currently capturing the **default source** (`pactl
+get-default-source`), so those apps hear mic + Carla. The default mic is never
+changed and nothing appears/disappears, so apps that own the default (e.g.
+WiVRn) are unaffected. Links are reconciled each pass and removed when the
+plugin closes, the default changes, or the daemon stops.
+
+Because it follows the *default* source, a mono mic fans both Carla channels
+into a mono consumer; a stereo consumer gets L/R by position. An app capturing a
+specific non-default device only receives the mix if that device is downstream
+of the default (e.g. via EasyEffects pointed at the default mic).
 
 | Field | Meaning |
 |-------|---------|
 | `enabled` | Turn the feature on/off. |
-| `name` / `description` | Node name and friendly description of the virtual mic. |
-| `set_default` | `true` to make it the active (default) input while present. |
-| `present_with` | Node whose presence gates it (your plugin) — its appearance/disappearance = Carla open/close. |
-| `mix_samplers[]` | Plugins whose stereo outputs are mixed in. |
-| `mix_sources[]` | Capture sources mixed in (your mic). Mono sources fan to both channels; stereo map L/R. |
+| `present_with` | Node whose presence gates the mix (your plugin) — its appearance/disappearance = Carla open/close. |
+| `mix_samplers[]` | Plugins whose stereo outputs (`output_1`/`output_2`) are mixed in. |
 
 ### `auto_launch`
 
@@ -164,7 +168,7 @@ systemctl --user restart carla-midi-daemon
 ./uninstall.sh --purge    # also delete ~/.config/carla-midi-daemon
 ```
 
-The daemon removes its virtual mic on shutdown, so nothing is left dangling.
+The daemon removes its mic-mix links on shutdown, so nothing is left dangling.
 
 ## License
 

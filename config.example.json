@@ -27,14 +27,10 @@
     }
   ],
 
-  "virtual_mic": {
+  "mic_mix": {
     "enabled": true,
-    "name": "Carla-Mic",
-    "description": "Carla Piano + Voice",
-    "set_default": true,
     "present_with": "BitsonicSampler",
-    "mix_samplers": ["BitsonicSampler"],
-    "mix_sources": ["mono-fallback"]
+    "mix_samplers": ["BitsonicSampler"]
   },
 
   "auto_launch": {

@@ -2,12 +2,14 @@
 # Linux-Carla-MIDI-Daemon
 # Auto-wires MIDI controllers AND audio outputs for Carla plugins ("samplers")
 # on Linux/PipeWire, with per-plugin MIDI priority/failover and toggleable audio
-# routes. Optionally manages a virtual microphone that exists only while a Carla
-# plugin is loaded (created on open, removed on close) and mixes plugin audio
-# with your real mic.
+# routes. Optionally mixes plugin audio into your microphone WITHOUT a virtual
+# device: while a gating Carla plugin is loaded, it links the plugin's output
+# into whatever app is capturing the current default source. The default mic is
+# never changed and no device appears/disappears, so apps that own the default
+# (e.g. WiVRn) are left untouched.
 #
 # Event-driven via PipeWire's pw-mon (no polling). Requires: pw-link, pw-mon, jq.
-# Virtual-mic feature additionally needs: pactl.
+# Mic-mix feature additionally needs: pactl (to read the default source).
 
 set -uo pipefail
 
@@ -44,61 +46,71 @@ node_exists() { { _ports o; _ports i; } | awk -F'\t' -v n="$1:" 'index($2,n)==1 
 mklink() { [ -n "${1:-}" ] && [ -n "${2:-}" ] && pw-link    "$1" "$2" 2>/dev/null; return 0; }
 rmlink() { [ -n "${1:-}" ] && [ -n "${2:-}" ] && pw-link -d "$1" "$2" 2>/dev/null; return 0; }
 
-# module id of our null-sink for the virtual source named $1 (empty if none)
-mic_module_id() { pactl list short modules 2>/dev/null | awk -v n="sink_name=$1 " 'index($0,n){print $1; exit}'; }
+# ── mic mix: feed Carla audio into the current default mic's consumers ──────
+# No virtual device and no default change. While the gating plugin is loaded we
+# link each sampler's stereo output INTO whatever apps are currently capturing
+# the default source, so those apps hear mic + Carla. Reconciled to the desired
+# set every pass: links to consumers that went away (or that belonged to a
+# previous default after it changes), and all links once the plugin closes, are
+# torn down; new consumers are wired up. Idempotent — safe to call each tick.
+mix_into_default_mic() {
+  [ "$(cfg '.mic_mix.enabled // false')" = true ] || return 0
+  command -v pactl >/dev/null || { log "mic_mix needs pactl (pipewire-pulse) — skipping"; return 0; }
 
-# ── virtual microphone: present only while a gating Carla plugin is loaded ──
-manage_virtual_mic() {
-  [ "$(cfg '.virtual_mic.enabled // false')" = true ] || return 0
-  command -v pactl >/dev/null || { log "virtual_mic needs pactl (pipewire-pulse) — skipping"; return 0; }
+  local -a samplers
+  mapfile -t samplers < <(cfg '.mic_mix.mix_samplers[]?')
+  [ "${#samplers[@]}" -eq 0 ] && return 0
 
-  local name desc gate setdef gate_present mic_present mid s src
-  name=$(cfg '.virtual_mic.name'); [ -z "$name" ] || [ "$name" = null ] && return 0
-  desc=$(cfg ".virtual_mic.description // \"$name\"")
-  gate=$(cfg '.virtual_mic.present_with // ""')
-  setdef=$(cfg '.virtual_mic.set_default // false')
-
+  local gate gate_present
+  gate=$(cfg '.mic_mix.present_with // ""')
   if [ -n "$gate" ]; then node_exists "$gate"; gate_present=$?; else gate_present=0; fi
-  node_exists "$name"; mic_present=$?
 
+  # ── desired links: "sampler_out<TAB>consumer_in" (empty while plugin closed) ─
+  local desired="" def consumers cport s
   if [ "$gate_present" -eq 0 ]; then
-    # Carla is open -> make sure the virtual mic exists
-    if [ "$mic_present" -ne 0 ]; then
-      log "Carla open -> creating virtual mic '$name'"
-      pactl load-module module-null-sink \
-        media.class=Audio/Source/Virtual \
-        sink_name="$name" channel_map=front-left,front-right \
-        sink_properties="device.description=$desc" >/dev/null 2>&1
-      [ "$setdef" = true ] && pactl set-default-source "$name" 2>/dev/null
-      # ports may not be ready this tick; the resulting node-add re-triggers reconcile
-    fi
-    if node_exists "$name"; then
-      # mix configured sampler outputs into the mic (stereo, by position)
-      while IFS= read -r s; do
-        [ -z "$s" ] && continue
-        mklink "$(src_exact "$s:output_1")" "$(sink_match "$name" input_FL)"
-        mklink "$(src_exact "$s:output_2")" "$(sink_match "$name" input_FR)"
-      done < <(cfg '.virtual_mic.mix_samplers[]?')
-      # mix configured capture sources (e.g. your mic) into the virtual mic.
-      # Auto-detects the source's ports: mono -> both channels, stereo -> L/R.
-      local fl fr; fl=$(sink_match "$name" input_FL); fr=$(sink_match "$name" input_FR)
-      local -a vp
-      while IFS= read -r src; do
-        [ -z "$src" ] && continue
-        mapfile -t vp < <(_ports o | awk -F'\t' -v t="$src" 'index($2,t){print $1}')
-        if   [ "${#vp[@]}" -ge 2 ]; then mklink "${vp[0]}" "$fl"; mklink "${vp[1]}" "$fr"
-        elif [ "${#vp[@]}" -eq 1 ]; then mklink "${vp[0]}" "$fl"; mklink "${vp[0]}" "$fr"
-        fi
-      done < <(cfg '.virtual_mic.mix_sources[]?')
-    fi
-  else
-    # Carla is closed -> remove the virtual mic so it vanishes from the system.
-    # (An external audio manager is expected to restore the previous default.)
-    if [ "$mic_present" -eq 0 ]; then
-      mid=$(mic_module_id "$name")
-      [ -n "$mid" ] && { log "Carla closed -> removing virtual mic '$name'"; pactl unload-module "$mid" 2>/dev/null; }
+    def=$(pactl get-default-source 2>/dev/null)
+    if [ -n "$def" ] && [ "$def" != "@DEFAULT_SOURCE@" ]; then
+      # input ports currently fed by the default source's capture ports
+      consumers=$(pw-link -o -l 2>/dev/null | awk -v def="$def:" '
+        /^[[:space:]]*\|->/ { if (cur) { l=$0; sub(/^[[:space:]]*\|-> /,"",l); sub(/ \((capture|playback)\)$/,"",l); print l } ; next }
+        /^[[:space:]]/      { next }
+        { cur = (index($0, def) == 1) }
+      ')
+      while IFS= read -r cport; do
+        [ -z "$cport" ] && continue
+        for s in "${samplers[@]}"; do
+          [ -z "$s" ] && continue
+          case "$cport" in
+            *FR|*_R|*-R|*[Rr]ight*) desired+="$s:output_2	$cport"$'\n' ;;
+            *FL|*_L|*-L|*[Ll]eft*)  desired+="$s:output_1	$cport"$'\n' ;;
+            *) desired+="$s:output_1	$cport"$'\n'"$s:output_2	$cport"$'\n' ;;  # mono/unknown -> sum both
+          esac
+        done
+      done <<< "$consumers"
     fi
   fi
+
+  # ── existing links from our sampler outputs: "sampler_out<TAB>consumer_in" ──
+  local existing="" cur="" line dst port
+  while IFS= read -r line; do
+    case "$line" in
+      *"|-> "*) [ -n "$cur" ] && { dst=${line##*|-> }; dst=${dst% (capture)}; dst=${dst% (playback)}; existing+="$cur	$dst"$'\n'; } ;;
+      [[:space:]]*) : ;;                                    # other indented (e.g. |<-) lines
+      *) port=${line% (capture)}; port=${port% (playback)}; cur=""
+         for s in "${samplers[@]}"; do case "$port" in "$s:output_1"|"$s:output_2") cur="$port" ;; esac; done ;;
+    esac
+  done < <(pw-link -o -l 2>/dev/null)
+
+  # ── reconcile: drop stale, add missing ─────────────────────────────────────
+  local link
+  while IFS= read -r link; do
+    [ -z "$link" ] && continue
+    printf '%s' "$desired" | grep -qxF "$link" || rmlink "${link%%	*}" "${link##*	}"
+  done <<< "$existing"
+  while IFS= read -r link; do
+    [ -z "$link" ] && continue
+    printf '%s' "$existing" | grep -qxF "$link" || mklink "${link%%	*}" "${link##*	}"
+  done <<< "$desired"
 }
 
 # ── auto-launch: open Carla when a trigger MIDI controller connects ────────
@@ -125,7 +137,15 @@ auto_launch() {
   AL_LAST_LAUNCH=$SECONDS
   cmd=$(cfg '.auto_launch.command // "carla"')
   log "MIDI controller connected and '$proc' not running -> launching: $cmd"
-  setsid sh -c "$cmd" >/dev/null 2>&1 </dev/null &
+  # GUI apps need the graphical-session env (DISPLAY/WAYLAND_DISPLAY/etc). The
+  # daemon may have started before the compositor imported those into the user
+  # manager, so its own environment can lack them. Pull the current values from
+  # the user systemd manager so Carla can actually reach the display.
+  local -a genv=()
+  while IFS= read -r _e; do genv+=("$_e"); done < <(
+    systemctl --user show-environment 2>/dev/null \
+      | grep -E '^(DISPLAY|WAYLAND_DISPLAY|XAUTHORITY|XDG_RUNTIME_DIR|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP)=')
+  setsid env "${genv[@]}" sh -c "$cmd" >/dev/null 2>&1 </dev/null &
 }
 
 # ── core: bring the live graph in line with the config ─────────────────────
@@ -178,16 +198,23 @@ reconcile() {
   done
 
   auto_launch
-  manage_virtual_mic
+  mix_into_default_mic
 }
 
-# ── lifecycle: tidy up the virtual mic when the daemon stops ───────────────
+# ── lifecycle: drop our mic-mix links when the daemon stops ─────────────────
 cleanup() {
-  if [ "$(cfg '.virtual_mic.enabled // false')" = true ] && command -v pactl >/dev/null; then
-    local name mid
-    name=$(cfg '.virtual_mic.name')
-    [ -n "$name" ] && [ "$name" != null ] && { mid=$(mic_module_id "$name"); [ -n "$mid" ] && pactl unload-module "$mid" 2>/dev/null; }
-  fi
+  [ "$(cfg '.mic_mix.enabled // false')" = true ] || return 0
+  local -a samplers; mapfile -t samplers < <(cfg '.mic_mix.mix_samplers[]?')
+  [ "${#samplers[@]}" -eq 0 ] && return 0
+  local cur="" line dst s
+  while IFS= read -r line; do
+    case "$line" in
+      *"|-> "*) [ -n "$cur" ] && { dst=${line##*|-> }; dst=${dst% (capture)}; dst=${dst% (playback)}; rmlink "$cur" "$dst"; } ;;
+      [[:space:]]*) : ;;
+      *) cur=""; line=${line% (capture)}; line=${line% (playback)}
+         for s in "${samplers[@]}"; do case "$line" in "$s:output_1"|"$s:output_2") cur="$line" ;; esac; done ;;
+    esac
+  done < <(pw-link -o -l 2>/dev/null)
 }
 trap cleanup EXIT INT TERM
 
